@@ -1,198 +1,58 @@
-const HTTP_METHODS = [
-  "ACL",
-  "BIND",
-  "CHECKOUT",
-  "CONNECT",
-  "COPY",
-  "DELETE",
-  "GET",
-  "HEAD",
-  "LINK",
-  "LOCK",
-  "M-SEARCH",
-  "MERGE",
-  "MKACTIVITY",
-  "MKCALENDAR",
-  "MKCOL",
-  "MOVE",
-  "NOTIFY",
-  "OPTIONS",
-  "PATCH",
-  "POST",
-  "PROPFIND",
-  "PROPPATCH",
-  "PURGE",
-  "PUT",
-  "REBIND",
-  "REPORT",
-  "SEARCH",
-  "SOURCE",
-  "SUBSCRIBE",
-  "TRACE",
-  "UNBIND",
-  "UNLINK",
-  "UNLOCK",
-  "UNSUBSCRIBE",
-];
+const [SKIND, PKIND, AKIND, STAR, SLASH, COLON] = [0, 1, 2, 42, 47, 58]
 
-export enum Types {
-  Static,
-  Param,
-  MatchAll,
-  Regex,
-  MultiParam,
-}
-
-export interface NodeOptions {
-  prefix?: string;
-  children?: any;
-  kind?: Types;
-  regex?: RegExp;
-  handlers?: any;
-}
-
-export class Handler {
-  constructor(
-    public readonly handler?: any,
-    public readonly params?: any[],
-    public readonly store?: any,
-    public readonly paramsLength?: number,
-  ) {
-  }
+export enum Kind {
+    Static = 0,
+    Parameter = 1,
+    Any = 2,
+    Star= 42,
+    Slash = 47,
+    Colon = 58
 }
 
 export class Node {
-  prefix = "/";
-  children = new Map<string, Node>();
-  kind: Types = Types.Static;
-  handlers = new Map<string, Handler>();
-  regex: RegExp | null = null;
-  wildcardChild = null;
-  parametricBrother: Node | null = null;
-
-  constructor(opts: NodeOptions = {}) {
-    if (opts.prefix) {
-      this.prefix = opts.prefix;
-    }
-    if (opts.children) {
-      this.children = opts.children;
-    }
-    if (opts.kind) {
-      this.kind = opts.kind;
-    }
-    // this.handlers = new Handlers(opts.handlers);
-    if (opts.regex) {
-      this.regex = opts.regex;
-    }
-  }
-
-  get label(): string {
-    return this.prefix[0];
-  }
-
-  get numberOfChildren(): number {
-    return this.children.size;
-  }
-
-  addChild(node: Node): Node {
-    let label;
-    switch (node.kind) {
-      case Types.Static:
-        label = node.label;
-        break;
-      case Types.Param:
-      case Types.Regex:
-      case Types.MultiParam:
-        label = ":";
-        break;
-      case Types.MatchAll:
-        label = "*";
-        break;
-      default:
-        throw new Error(`Unknown node kind: ${node.kind}`);
-    }
-    if (this.children.has(label)) {
-      throw new Error(`There is already a child with label '${label}'`);
-    }
-    this.children.set(label, node);
-    const labels = this.children.keys();
-    let parametricBrother = this.parametricBrother;
-
-    for (const child of this.children.values()) {
-      if (":" === child.label) {
-        parametricBrother = child;
-        break;
-      }
+    label: number;
+    constructor(
+        public prefix = '/',
+        public children: Node[] = [],
+        public kind = Kind.Static,
+        public map = new Map<string, any>()) {
+        this.label = prefix.charCodeAt(0);
     }
 
-    const iterate = (node: Node) => {
-      if (!node) {
-        return;
-      }
-      if (node.kind !== Types.Static) {
-        return;
-      }
-      if (node !== this) {
-        node.parametricBrother = parametricBrother || node.parametricBrother;
-      }
-      for (const c of node.children.values()) {
-        iterate(c);
-      }
-    };
-
-    iterate(this);
-    return this;
-  }
-
-  reset(prefix: string): Node {
-    this.prefix = prefix;
-    this.children = new Map<string, Node>();
-    this.kind = Types.Static;
-    this.handlers = new Map<string, Handler>();
-    this.regex = null;
-    this.wildcardChild = null;
-    return this;
-  }
-
-  findByLabel(path: string): Node | undefined {
-    return this.children.get(path[0]);
-  }
-
-  findChild(path: string, method: string): Node | null {
-    let child = this.findByLabel(path);
-    // todo handlers
-    if (child && (child.numberOfChildren > 0 && child.handlers.has(method))) {
-      if (path.slice(0, child.prefix.length) === child.prefix) {
-        return child;
-      }
+    addChild(node: Node) {
+        this.children.push(node)
     }
-    child = this.findByLabel(":");
-    if (child && (child.numberOfChildren > 0 && child.handlers.has(method))) {
-      return child;
-    }
-    child = this.findByLabel("*");
-    if (child && (child.numberOfChildren > 0 && child.handlers.has(method))) {
-      return child;
-    }
-    return null;
-  }
 
-  setHandler(method: string, handler: Function, params: any[], store: any) {
-    if (this.handlers.has(method)) {
-      throw new Error(`There is already an handler with method '${method}'`);
+    findChild(label: number, kind: Kind) {
+        for (const child of this.children) {
+            if (label === child.label && kind === child.kind) {
+                return child;
+            }
+        }
     }
-    this.handlers.set(
-      method,
-      new Handler(handler, params, store, params.length),
-    );
-  }
 
-  getHandler(method: string) {
-    return this.handlers.get(method);
-  }
+    findChildWithLabel(label: number) {
+        for (const child of this.children) {
+            if (label === child.label) {
+                return child;
+            }
+        }
+    }
 
-  prettyPrint(prefix: string, tail: string) {
-    // todo
-    return "";
-  }
+    findChildByKind(kind: Kind) {
+        for (const child of this.children) {
+            if (kind === child.kind) {
+                return child;
+            }
+        }
+    }
+
+    addHandler(method: string, handler: Function, pnames: any) {
+        this.map.set(method, { handler, pnames });
+    }
+
+    findHandler(method: string) {
+        return this.map.get(method);
+    }
 }
+
