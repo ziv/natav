@@ -56,7 +56,7 @@ export class Node {
     this.map.set(method, { handler, pnames });
   }
 
-  findHandler(method: string) {
+  findHandler(method: string): Handler | undefined {
     return this.map.get(method);
   }
 }

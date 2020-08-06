@@ -1,4 +1,4 @@
-import { Kind, Node } from "./node.ts";
+import {Handler, Kind, Node} from "./node.ts";
 
 export class Router {
   tree = new Node();
@@ -7,10 +7,11 @@ export class Router {
     let i = 0;
     let l = path.length;
     let pnames: string[] = [];
+    let ch: Kind;
     let j: number;
 
     for (; i < l; ++i) {
-      let ch = path.charCodeAt(i);
+      ch = path.charCodeAt(i);
       if (ch === Kind.Colon) {
         j = i + 1;
 
@@ -18,6 +19,7 @@ export class Router {
         while (i < l && path.charCodeAt(i) !== Kind.Slash) {
           i++;
         }
+
         pnames.push(path.substring(j, i));
         path = path.substring(0, j) + path.substring(i);
         i = j;
@@ -51,68 +53,67 @@ export class Router {
     pnames?: any,
     handler?: Function,
   ) {
-    let current = this.tree;
-    let max: number = 0;
+    let cn = this.tree;
     let prefix: string;
     let sl: number;
     let pl: number;
     let l: number;
+    let max: number;
     let n: Node;
+    let c: any;
 
     while (true) {
-      prefix = current.prefix;
+      prefix = cn.prefix;
       sl = path.length;
       pl = prefix.length;
       l = 0;
 
       // LCP
+      max = sl < pl ? sl : pl;
       while (l < max && path.charCodeAt(l) === prefix.charCodeAt(l)) {
         l++;
       }
+
       if (l < pl) {
         // split node
         n = new Node(
           prefix.substring(l),
-          current.children,
-          current.kind,
-          current.map,
+          cn.children,
+          cn.kind,
+          cn.map,
         );
-        // add to parent
-        current.children = [n];
+        cn.children = [n]; // add to parent
 
         // Reset parent node
-        current.label = prefix.charCodeAt(0);
-        current.prefix = prefix.substring(0, l);
-        current.map = Object.create(null);
-        current.kind = Kind.Static;
+        cn.label = prefix.charCodeAt(0)
+        cn.prefix = prefix.substring(0, l)
+        cn.map = new Map<string, Handler>();
+        cn.kind = Kind.Static;
 
         if (l === sl) {
           // At parent node
-          // @ts-ignore
-          current.addHandler(method, handler, pnames);
-          current.kind = kind;
+          cn.addHandler(method, handler as Function, pnames);
+          cn.kind = kind;
         } else {
           // Create child node
           n = new Node(path.substring(l), [], kind);
-          // @ts-ignore todo
-          n.addHandler(method, handler, pnames);
-          current.addChild(n);
+          n.addHandler(method, handler as Function, pnames);
+          cn.addChild(n);
         }
       } else if (l < sl) {
         path = path.substring(l);
-        const c = current.findChildWithLabel(path.charCodeAt(0));
+        c = cn.findChildWithLabel(path.charCodeAt(0));
         if (c !== undefined) {
           // Go deeper
-          current = c;
+          cn = c;
           continue;
         }
         // Create child node
         n = new Node(path, [], kind);
-        // @ts-ignore
-        n.addHandler(method, handler, pnames);
-        current.addChild(n);
+        n.addHandler(method, handler as Function, pnames);
+        cn.addChild(n);
       } else if (handler !== undefined) {
-        current.addHandler(method, handler, pnames);
+        cn.addHandler(method, handler, pnames);
       }
       return;
     }
@@ -123,38 +124,38 @@ export class Router {
     path: string,
     cn?: Node,
     n = 0,
-    result = [undefined, []],
+    result: [any, any[]] = [undefined, []],
   ) {
-    cn = cn || this.tree;
-    const sl = path.length;
-    const prefix = cn.prefix;
-    const pvalues: any = result[1]; // Params
+    cn = cn || this.tree // Current node as root
+    const sl = path.length
+    const prefix = cn.prefix
+    const pvalues = result[1] // Params
     let i, pl, l, max, c;
-    let preSearch; // Pre search
+    let preSearch // Pre search
+
 
     // Search order static > param > match-any
     if (sl === 0 || path === prefix) {
       // Found
-      const r = cn.findHandler(method);
+      const r = cn.findHandler(method) as Handler;
       if ((result[0] = r && r.handler) !== undefined) {
-        const pnames = r.pnames;
+        const pnames = r.pnames
         if (pnames !== undefined) {
           for (i = 0, l = pnames.length; i < l; ++i) {
             pvalues[i] = {
               name: pnames[i],
-              value: pvalues[i],
-            };
+              value: pvalues[i]
+            }
           }
         }
       }
-      return result;
+      return result
     }
 
     pl = prefix.length;
     l = 0;
 
     // LCP
-    // max = Math.min(sl, pl);
     max = sl < pl ? sl : pl;
     while (l < max && path.charCodeAt(l) === prefix.charCodeAt(l)) {
       l++;
@@ -209,9 +210,10 @@ export class Router {
     c = cn.findChildByKind(Kind.Any);
     if (c !== undefined) {
       pvalues[n] = path;
-      path = ""; // End search
+      path = ''; // End search
       this.find(method, path, c, n, result);
     }
+
     return result;
   }
 }
